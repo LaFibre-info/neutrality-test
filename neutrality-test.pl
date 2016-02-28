@@ -2,7 +2,9 @@
 
 # neutrality test
 # based on test-neutralite.bat by Vivien GUEANT @ https://lafibre.info
-# written par Kirth Gersen under GNU GPLv3 http://www.gnu.org/licenses/gpl-3.0.en.html
+# written by Kirth Gersen under GNU GPLv3 http://www.gnu.org/licenses/gpl-3.0.en.html
+# kgersen at hotmail dot com
+# project home : https://github.com/kgersen/neutrality-test
 
 use strict;
 use warnings;
@@ -27,7 +29,6 @@ my %sizes = (
 my $debug = 0;
 my $ul_only = 0;
 my $dl_only = 0;
-my $man = 0;
 my $server = '3.testdebit.info';
 my $test = '';
 my $sizename = '10M';
@@ -155,13 +156,13 @@ sub doCurl {
     # hacky: french locale decimal separator
     $result =~ tr/,/./;
     print "result : $result \n" if $debug;
-    my ($time_namelookup, $time_connect, $time_starttransfer, $time_total, $size_download) = split / /, $result;
+    my ($time_namelookup, $time_connect, $time_starttransfer, $time_total, $size_transfered) = split / /, $result;
     if ($debug) {
       print "time_namelookup : $time_namelookup\n";
       print "time_connect : $time_connect\n";
       print "time_starttransfer : $time_starttransfer\n";
       print "time_total : $time_total\n";
-      print "size_download : $size_download bytes\n";
+      print "$sizeparam : $size_transfered bytes\n";
     }
     $time_namelookup = $time_namelookup*1000;
 
@@ -173,7 +174,7 @@ sub doCurl {
     $time_total *= 1000;
     my $temps_transfert = $time_total-$time_starttransfer;
 
-    my $bw = sprintf("%.2f",  $size_download*8/1000/$temps_transfert);
+    my $bw = sprintf("%.2f",  $size_transfered*8/1000/$temps_transfert);
 
     my $dirLabel= ($dir =~ "POST") ?"Up" : "Down";
 
