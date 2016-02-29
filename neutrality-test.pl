@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 
-# neutrality test
+# neutrality test - draft version . no version number yet TODO
 # based on test-neutralite.bat by Vivien GUEANT @ https://lafibre.info
 # written by Kirth Gersen under GNU GPLv3 http://www.gnu.org/licenses/gpl-3.0.en.html
 # kgersen at hotmail dot com
@@ -11,38 +11,47 @@ use warnings;
 use Getopt::Long;
 use Pod::Usage; #TODO bug ?
 
-my %sizes = (
-  "1M"  => 1,
-  "2M"  => 2,
-  "5M" => 5,
-  "10M" => 10,
-  "20M"  => 20,
-  "50M"  => 50,
-  "100M"  => 100,
-  "200M"  => 200,
-  "500M"  => 500,
-  "1G" => 1000,
-  "5G"  => 5000
-  );
-
 # parameters & constants
 my $debug = 0;
 my $ul_only = 0;
 my $dl_only = 0;
 my $server = '3.testdebit.info';
 my $test = '';
-my $sizename = '10M';
 my $temppath = 'temp';
+my $size_upload = '10M';
+my $size_download = '10M';
+my $timeout = 0;
 # cmd line options
 GetOptions(
   'server=s'=> \$server,
   'test=s'=> \$test,
-  'size=s'=> \$sizename,
-  'tmppath=s' => $temppath,
+  'size=s'=> \&ParseSize,
+  'tmppath=s' => \$temppath,
+  'timeout=i' => \$timeout,
   'ul' => \$ul_only,
   'dl' => \$dl_only,
   'debug' => \$debug,
   'help|?' => sub { pod2usage(1) }) or pod2usage(2);
+
+# parse -size <value>
+sub ParseSize {
+      my ($n, $v) = @_;
+      print("parsing option $n with value $v\n") if $debug;
+      my $size_value = qr/[1-9][0-9]*[KMGT]?/;
+      if ($v =~ /^($size_value)$/)
+      {
+        $size_download = $1;
+        $size_upload = $1;
+        print "Found a single size $1\n" if $debug;
+      }
+      elsif ($v =~ /^($size_value)\/($size_value)$/) {
+        $size_download = $1;
+        $size_upload = $2;
+        print "Found a dual size $1 and $2\n" if $debug;
+
+      }
+      else {die('bad size value');}
+}
 
 # when in doubt
 print "$0 is running on $^O  \n" if $debug;
@@ -58,7 +67,6 @@ print "null device is $null\n" if $debug;
 # globals
 my @G_tempdled = (); # store downloaded files to clean up at the end
 # TODO get upload & download sizes
-my $size = $sizes{$sizename};
 
 # do all tests
 if ($test eq '') {
@@ -66,14 +74,19 @@ if ($test eq '') {
     print("parsing line: $line\n") if $debug;
     last if ($line =~ "end");
     chomp $line;
-    my $r = doTest($line,$size,$temppath);
-    print "doTest return $r" if $debug;
+    my ($ip, $port, $proto, $type, $direction) = parseTest($line);
+    my $size = ($direction eq 'GET') ? $size_download : $size_upload;
+    my $r = doTest($ip, $port, $proto, $type, $direction, $size, $timeout);
+    print "doTest returned $r" if $debug;
   }
 }
 # do only a specific test
 else
 {
-  doTest($test,$size,$temppath);
+  my ($ip, $port, $proto, $type, $direction) = parseTest($test);
+  my $size = ($direction eq 'GET') ? $size_download : $size_upload;
+  my $r = doTest($ip, $port, $proto, $type, $direction, $size , $timeout);
+  print "doTest returned $r" if $debug;
 }
 
 # clean up
@@ -90,28 +103,29 @@ sub cleanup {
   }
 }
 
+# parse test. TODO some asserts ?
+sub parseTest {
+  my ($ip, $port, $proto, $type, $direction) = split /\s+/, $_[0];
+  print  "parsed D=$direction, IP=$ip, PORT=$port, PROTO=$proto, TYPE=$type\n" if $debug;
+  return ($ip, $port, $proto, $type, $direction);
+}
 
 # performs a test
 # TODO
 sub doTest {
-  print "doTest: $_[0]\n" if $debug;
-  my $size = $_[1];
-  my $temp = $_[2];
-  my ($ip, $port, $proto, $type, $direction) = split /\s+/, $_[0];
-  print  "D=$direction, IP=$ip, PORT=$port, PROTO=$proto, TYPE=$type, SIZE=$size, TMP=$temp\n" if $debug;
-
+  my ($ip, $port, $proto, $type, $direction, $size, $timeout) = @_;
   my $url = "";
   # get the temp file if needed
   if (($direction eq "POST") && !$dl_only)
   {
-    my $tempfile = $temp . $$ . '-' . $size . $type;
+    my $tempfile = $temppath . $$ . '-' . $size . $type;
     $tempfile = lc $tempfile;
     print "tempfile : $tempfile\n" if $debug;
 
     if (!grep { $tempfile eq $_ } @G_tempdled)
     {
       push @G_tempdled, $tempfile;
-      my $curlcmd = "curl -s -o $tempfile $proto://$server:$port/fichiers/${size}Mo/${size}Mo$type";
+      my $curlcmd = "curl -s -o $tempfile $proto://$server:$port/fichiers/${size}o/${size}o$type";
       print "$curlcmd \n" if $debug;
       print "downloading temporary file $tempfile...";
       my $rc = `$curlcmd`;
@@ -130,7 +144,7 @@ sub doTest {
   {
     # http://3.testdebit.info/fichiers/%tailleDL%Mo/%tailleDL%Mo.zip
     # TODO this is so specific to that server...
-    $url = "$proto://$server:$port/fichiers/${size}Mo/${size}Mo$type";
+    $url = "$proto://$server:$port/fichiers/${size}o/${size}o$type";
   }
   # did we build an url ?
   return("skiped") if ($url eq "");
@@ -142,10 +156,10 @@ sub doTest {
   }
 
   #perform the Curl
-  print "$ip $direction $url" if $debug;
+  print "$ip $direction $url\n" if $debug;
 
-  print "IPv$ip+TCP$port  +$proto $type: ";
-  my $result = doCurl($ip,$direction,$url);
+  printf "IPv$ip+TCP%-6s+%6s %5s: ",$port,$proto,$type;
+  my $result = doCurl($ip,$direction,$timeout,$url);
   print "$result\n";
   return "ok";
 }
@@ -155,31 +169,37 @@ sub doTest {
 # args:
 #    4 or 6
 #    POST or GET
+#    timeout
 #    rest of the curl args
 # TODO: split in 2, seperate curl'ing & calculations from pretty pretting
 sub doCurl {
-  my ($ip, $dir, $url) = @_;
+  my ($ip, $dir, $timeout, $url) = @_;
   print("doCurl args = @_\n") if $debug;
   my $sizeparam = ($dir eq 'GET') ? "size_download" : "size_upload";
-  my $curlcmd = "curl -$ip -s --write-out \"%{time_namelookup} %{time_connect} %{time_starttransfer} %{time_total} %{$sizeparam}\" -o $null $url"; #  2>&1 ?
+  my $timeout_cmd = ($timeout == 0) ? "" : "--max-time $timeout";
+  my $curlcmd = "curl -$ip -s $timeout_cmd --write-out \"%{time_namelookup} %{time_connect} %{time_starttransfer} %{time_total} %{$sizeparam} %{http_code}\" -o $null $url"; #  2>&1 ?
   print "$curlcmd \n" if $debug;
   my $result = `$curlcmd`;
-
-  if ($? != 0) {
-    print "!!! curl error for @_ !!!\n";
+  my $curlRC = $? >>8;
+  print "curl return code = $curlRC\n" if $debug;
+  if ($curlRC != 0 && $curlRC != 28) {
+    print "!!! curl error for @_ !!! RC = $curlRC\n";
   }
   else {
     # hacky: french locale decimal separator
     $result =~ tr/,/./;
     print "result : $result \n" if $debug;
-    my ($time_namelookup, $time_connect, $time_starttransfer, $time_total, $size_transfered) = split / /, $result;
+    my ($time_namelookup, $time_connect, $time_starttransfer, $time_total, $size_transfered, $httpcode) = split / /, $result;
     if ($debug) {
       print "time_namelookup : $time_namelookup\n";
       print "time_connect : $time_connect\n";
       print "time_starttransfer : $time_starttransfer\n";
       print "time_total : $time_total\n";
       print "$sizeparam : $size_transfered bytes\n";
+      print "http_code : $httpcode\n";
     }
+    # TODO if 200 & 100 not too restrictive ?
+    return "error (http $httpcode)" unless $httpcode eq "200" || $httpcode eq "100";
     $time_namelookup = $time_namelookup*1000;
 
     $time_connect *= 1000;
@@ -193,8 +213,9 @@ sub doCurl {
     my $bw = sprintf("%.2f",  $size_transfered*8/1000/$temps_transfert);
 
     my $dirLabel= ($dir =~ "POST") ?"Up" : "Down";
-
-    return "$bw Mb/s (DNS:${time_namelookup}ms SYN:${Ping}ms $dir:${time_starttransfer}ms $dirLabel:${temps_transfert}ms)";
+    my $timedout = ($curlRC == 28) ? "timeout":'full';
+    $bw = sprintf("%8s",$bw);
+    return "$bw Mb/s (DNS:${time_namelookup}ms SYN:${Ping}ms $dir:${time_starttransfer}ms $dirLabel:${temps_transfert}ms:$timedout)";
   }
 }
 
