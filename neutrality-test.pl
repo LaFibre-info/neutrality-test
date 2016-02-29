@@ -47,6 +47,10 @@ GetOptions(
 # when in doubt
 print "$0 is running on $^O  \n" if $debug;
 
+# catch signals
+$SIG{INT} = sub { print "Caught a sigint $!\n"; cleanup(); die; };
+$SIG{TERM} = sub { print "Caught a sigterm $!\n"; cleanup(); die; };
+
 # null device is OS specific
 my $null = ($^O eq 'Win32') ? 'NUL' : '/dev/null';
 print "null device is $null\n" if $debug;
@@ -62,7 +66,8 @@ if ($test eq '') {
     print("parsing line: $line\n") if $debug;
     last if ($line =~ "end");
     chomp $line;
-    doTest($line,$size,$temppath);
+    my $r = doTest($line,$size,$temppath);
+    print "doTest return $r" if $debug;
   }
 }
 # do only a specific test
@@ -72,13 +77,19 @@ else
 }
 
 # clean up
-foreach my $file ( @G_tempdled ) {
-  print "removing file $file\n";
-  unlink $file or warn "Could not unlink $file: $!";
-}
-
+cleanup();
 
 exit;
+
+# -------------------------------------------------------------------------
+
+sub cleanup {
+  foreach my $file ( @G_tempdled ) {
+    print "removing file $file\n" if $debug;
+    unlink $file or warn "Could not unlink $file: $!";
+  }
+}
+
 
 # performs a test
 # TODO
@@ -99,15 +110,18 @@ sub doTest {
 
     if (!grep { $tempfile eq $_ } @G_tempdled)
     {
+      push @G_tempdled, $tempfile;
       my $curlcmd = "curl -s -o $tempfile $proto://$server:$port/fichiers/${size}Mo/${size}Mo$type";
       print "$curlcmd \n" if $debug;
+      print "downloading temporary file $tempfile...";
       my $rc = `$curlcmd`;
       if ($? != 0) {
         print "!!! curl error for $curlcmd !!!\n";
+        #TODO: stop or continue ?
+        print"error!\n";
+        return "error";
       }
-      else {
-        push @G_tempdled, $tempfile;
-      }
+      print "done.\n";
     }
     $url = '-F "filecontent=@' .  $tempfile . '"';
     $url .= " $proto://$server:$port";
@@ -130,8 +144,10 @@ sub doTest {
   #perform the Curl
   print "$ip $direction $url" if $debug;
 
+  print "IPv$ip+TCP$port  +$proto $type: ";
   my $result = doCurl($ip,$direction,$url);
-  print "IPv$ip+TCP$port  +$proto $type: $result\n";
+  print "$result\n";
+  return "ok";
 }
 
 
