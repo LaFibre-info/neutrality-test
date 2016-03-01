@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 
-# neutrality test - draft version . no version number yet TODO
+# neutrality test
 # based on test-neutralite.bat by Vivien GUEANT @ https://lafibre.info
 # written by Kirth Gersen under GNU GPLv3 http://www.gnu.org/licenses/gpl-3.0.en.html
 # kgersen at hotmail dot com
@@ -11,8 +11,12 @@ use warnings;
 use Getopt::Long;
 use Pod::Usage; #TODO bug ?
 use IPC::Open3;
+use POSIX "strftime";
 use POSIX ":sys_wait_h";
 use IO::Handle;
+use Config;
+
+our $VERSION = 1.0.1;
 
 # parameters & constants
 my $debug = 0;
@@ -23,12 +27,14 @@ my $test = '';
 my $size_upload = '5000M';
 my $size_download = '5000M';
 my $timeout = 8;
+my $csv = 0;
 # cmd line options
 GetOptions(
   'server=s'=> \$server,
   'test=s'=> \$test,
   'size=s'=> \&ParseSize,
   'timeout=i' => \$timeout,
+  'csv' => \$csv,
   'ul' => \$ul_only,
   'dl' => \$dl_only,
   'debug' => \$debug,
@@ -55,17 +61,21 @@ sub ParseSize {
 
 # when in doubt
 print "$0 is running on $^O  \n" if $debug;
+printout ("Running on $Config{osname} - $Config{osvers} - $Config{archname}\n");
+my $datetime = localtime();
+printout ("started at: $datetime\n");
 
 # catch signals
 $SIG{INT} = sub { print "Caught a sigint $!\n"; cleanup(); die; };
 $SIG{TERM} = sub { print "Caught a sigterm $!\n"; cleanup(); die; };
-$SIG{PIPE} = sub { print "Caught a sigpipe $!\n" if $debug; };
+$SIG{PIPE} = sub { print "Caught a sigpipe $!\n" if $debug; }; # dont remove this or PUT tests will fail if timeout
 
 # null device is OS specific
 my $null = ($^O eq 'Win32') ? 'NUL' : '/dev/null';
 print "null device is $null\n" if $debug;
 
-# globals
+# csv mode
+print ("DATE;SERVER;IP;PROTO4;PORT;PROTO7;CONTENT;BW;DNS;PING;DIR;START;DURATION;TIMEDOUT;SIZE;CODE;TIME\n") if ($csv);
 
 # do all tests
 if ($test eq '') {
@@ -87,6 +97,9 @@ else
   my $r = doTest($ip, $port, $proto, $type, $direction, $size , $timeout);
   print "doTest returned $r" if $debug;
 }
+
+$datetime = localtime();
+printout ("ended at: $datetime\n");
 
 # clean up
 cleanup();
@@ -135,7 +148,14 @@ sub doTest {
   #perform the Curl
   print "$ip $direction $url\n" if $debug;
 
-  printf "IPv$ip+TCP%-6s+%6s %5s: ",$port,$proto,$type;
+  if ($csv) {
+    print strftime("%Y-%m-%d %H:%M:%S;", localtime(time)), "$server;$ip;TCP;$port;$proto;$type;";
+  }
+  else
+  {
+    printf ("IPv$ip TCP %-6s %6s %5s: ",$port,$proto,$type);
+  }
+
   my $result = doCurl($ip,$direction,$timeout, $size, $url);
   print "$result\n";
   return "ok";
@@ -184,6 +204,7 @@ sub doCurl {
     while (1)
     {
       if (waitpid ($childpid,WNOHANG)) {
+        print "child ended\n" if $debug;
         $curlRC = $? >> 8;
         $childisalive = 0;
         last;
@@ -235,9 +256,18 @@ sub doCurl {
 
     my $dirLabel= ($dir =~ "POST") ?"Up" : "Down";
     my $timedout = ($curlRC == 28) ? "timeout":'full';
-    $bw = sprintf("%8s",$bw);
-    return "$bw Mb/s (DNS:${time_namelookup}ms SYN:${Ping}ms $dir:${time_starttransfer}ms $dirLabel:${temps_transfert}ms:$timedout:$size_transfered)";
+    if ($csv) {
+      return "$bw;${time_namelookup};${Ping};$dir;${time_starttransfer};${temps_transfert};$timedout;$size_transfered;$httpcode;$time_total";
+    }
+    else      {
+      $bw = sprintf("%8s",$bw);
+      return "$bw Mb/s (DNS:${time_namelookup}ms SYN:${Ping}ms $dir:${time_starttransfer}ms $dirLabel:${temps_transfert}ms:$timedout:$size_transfered)";}
   }
+}
+
+sub printout {
+  return if ($csv);
+  print @_;
 }
 
 sub Sizetobytes {
