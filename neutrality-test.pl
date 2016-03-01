@@ -16,7 +16,7 @@ use POSIX ":sys_wait_h";
 use IO::Handle;
 use Config;
 
-our $VERSION = 1.0.1;
+our $VERSION = 1.0.2;
 
 # parameters & constants
 my $debug = 0;
@@ -28,6 +28,8 @@ my $size_upload = '5000M';
 my $size_download = '5000M';
 my $timeout = 8;
 my $csv = 0;
+my $ip4only = 0;
+my $ip6only = 0;
 # cmd line options
 GetOptions(
   'server=s'=> \$server,
@@ -37,6 +39,8 @@ GetOptions(
   'csv' => \$csv,
   'ul' => \$ul_only,
   'dl' => \$dl_only,
+  '-4' => \$ip4only,
+  '-6' => \$ip6only,
   'debug' => \$debug,
   'help|?' => sub { pod2usage(1) }) or pod2usage(2);
 
@@ -124,6 +128,9 @@ sub parseTest {
 sub doTest {
   my ($ip, $port, $proto, $type, $direction, $size, $timeout) = @_;
   my $url = "";
+
+  return("skiped ip6") if ($ip4only && $ip eq 6);
+  return("skiped ip4") if ($ip6only && $ip eq 4);
 
   if (($direction eq "POST") && !$dl_only)
   {
