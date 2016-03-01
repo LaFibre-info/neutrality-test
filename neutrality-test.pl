@@ -10,6 +10,9 @@ use strict;
 use warnings;
 use Getopt::Long;
 use Pod::Usage; #TODO bug ?
+use IPC::Open3;
+use POSIX ":sys_wait_h";
+use IO::Handle;
 
 # parameters & constants
 my $debug = 0;
@@ -17,16 +20,14 @@ my $ul_only = 0;
 my $dl_only = 0;
 my $server = '3.testdebit.info';
 my $test = '';
-my $temppath = 'temp';
-my $size_upload = '10M';
-my $size_download = '10M';
-my $timeout = 0;
+my $size_upload = '5000M';
+my $size_download = '5000M';
+my $timeout = 8;
 # cmd line options
 GetOptions(
   'server=s'=> \$server,
   'test=s'=> \$test,
   'size=s'=> \&ParseSize,
-  'tmppath=s' => \$temppath,
   'timeout=i' => \$timeout,
   'ul' => \$ul_only,
   'dl' => \$dl_only,
@@ -48,7 +49,6 @@ sub ParseSize {
         $size_download = $1;
         $size_upload = $2;
         print "Found a dual size $1 and $2\n" if $debug;
-
       }
       else {die('bad size value');}
 }
@@ -59,14 +59,13 @@ print "$0 is running on $^O  \n" if $debug;
 # catch signals
 $SIG{INT} = sub { print "Caught a sigint $!\n"; cleanup(); die; };
 $SIG{TERM} = sub { print "Caught a sigterm $!\n"; cleanup(); die; };
+$SIG{PIPE} = sub { print "Caught a sigpipe $!\n" if $debug; };
 
 # null device is OS specific
 my $null = ($^O eq 'Win32') ? 'NUL' : '/dev/null';
 print "null device is $null\n" if $debug;
 
 # globals
-my @G_tempdled = (); # store downloaded files to clean up at the end
-# TODO get upload & download sizes
 
 # do all tests
 if ($test eq '') {
@@ -97,10 +96,7 @@ exit;
 # -------------------------------------------------------------------------
 
 sub cleanup {
-  foreach my $file ( @G_tempdled ) {
-    print "removing file $file\n" if $debug;
-    unlink $file or warn "Could not unlink $file: $!";
-  }
+  # nothing more
 }
 
 # parse test. TODO some asserts ?
@@ -115,34 +111,15 @@ sub parseTest {
 sub doTest {
   my ($ip, $port, $proto, $type, $direction, $size, $timeout) = @_;
   my $url = "";
-  # get the temp file if needed
+
   if (($direction eq "POST") && !$dl_only)
   {
-    my $tempfile = $temppath . $$ . '-' . $size . $type;
-    $tempfile = lc $tempfile;
-    print "tempfile : $tempfile\n" if $debug;
-
-    if (!grep { $tempfile eq $_ } @G_tempdled)
-    {
-      push @G_tempdled, $tempfile;
-      my $curlcmd = "curl -s -o $tempfile $proto://$server:$port/fichiers/${size}o/${size}o$type";
-      print "$curlcmd \n" if $debug;
-      print "downloading temporary file $tempfile...";
-      my $rc = `$curlcmd`;
-      if ($? != 0) {
-        print "!!! curl error for $curlcmd !!!\n";
-        #TODO: stop or continue ?
-        print"error!\n";
-        return "error";
-      }
-      print "done.\n";
-    }
-    $url = '-F "filecontent=@' .  $tempfile . '"';
+    $url = '-T "-" ';
     $url .= " $proto://$server:$port";
   }
   elsif (!$ul_only)
   {
-    # http://3.testdebit.info/fichiers/%tailleDL%Mo/%tailleDL%Mo.zip
+    # http://3totaldebit.info/fichiers/%tailleDL%Mo/%tailleDL%Mo.zip
     # TODO this is so specific to that server...
     $url = "$proto://$server:$port/fichiers/${size}o/${size}o$type";
   }
@@ -159,7 +136,7 @@ sub doTest {
   print "$ip $direction $url\n" if $debug;
 
   printf "IPv$ip+TCP%-6s+%6s %5s: ",$port,$proto,$type;
-  my $result = doCurl($ip,$direction,$timeout,$url);
+  my $result = doCurl($ip,$direction,$timeout, $size, $url);
   print "$result\n";
   return "ok";
 }
@@ -173,14 +150,58 @@ sub doTest {
 #    rest of the curl args
 # TODO: split in 2, seperate curl'ing & calculations from pretty pretting
 sub doCurl {
-  my ($ip, $dir, $timeout, $url) = @_;
+  my ($ip, $dir, $timeout, $size, $url) = @_;
   print("doCurl args = @_\n") if $debug;
   my $sizeparam = ($dir eq 'GET') ? "size_download" : "size_upload";
   my $timeout_cmd = ($timeout == 0) ? "" : "--max-time $timeout";
   my $curlcmd = "curl -$ip -s $timeout_cmd --write-out \"%{time_namelookup} %{time_connect} %{time_starttransfer} %{time_total} %{$sizeparam} %{http_code}\" -o $null $url"; #  2>&1 ?
   print "$curlcmd \n" if $debug;
-  my $result = `$curlcmd`;
-  my $curlRC = $? >>8;
+  my $result = '';
+  my $curlRC = -1;
+
+  if ($dir eq "GET") {
+    $result = `$curlcmd`;
+    $curlRC = $? >>8;
+  }
+  else #assume PUT
+  {
+    my($wtr, $rdr, $err);
+    my $childpid = open3($wtr, $rdr, $err, "$curlcmd");
+    $wtr->autoflush(1);
+    binmode $wtr;
+    my $sent = 0;
+    my $totaltosend = Sizetobytes($size);
+    print ("size is $size, so total bytes to send is $totaltosend\n") if $debug ;
+
+    my @chunk;
+    my $chuck_size = 4096;
+    for (my $idx = 0; $idx < $chuck_size; $idx++) {
+        $chunk[$idx] = $idx % 256;
+    }
+    my $pack = pack('C*',@chunk);
+
+    my $childisalive = 1;
+    while (1)
+    {
+      if (waitpid ($childpid,WNOHANG)) {
+        $curlRC = $? >> 8;
+        $childisalive = 0;
+        last;
+      }
+
+      print $wtr $pack;
+      $sent += $chuck_size ;
+      last if ($sent >= $totaltosend);
+    }
+    close ($wtr);
+    $result = <$rdr>;
+    if ($childisalive)
+    {
+      waitpid ($childpid,0);
+      $curlRC = $? >> 8;
+    }
+  }
+
   print "curl return code = $curlRC\n" if $debug;
   if ($curlRC != 0 && $curlRC != 28) {
     print "!!! curl error for @_ !!! RC = $curlRC\n";
@@ -198,8 +219,8 @@ sub doCurl {
       print "$sizeparam : $size_transfered bytes\n";
       print "http_code : $httpcode\n";
     }
-    # TODO if 200 & 100 not too restrictive ?
-    return "error (http $httpcode)" unless $httpcode eq "200" || $httpcode eq "100";
+    # TODO check for more?
+    return "error (http $httpcode)" unless $httpcode eq "200" || $httpcode eq "100" || $httpcode eq "405";
     $time_namelookup = $time_namelookup*1000;
 
     $time_connect *= 1000;
@@ -215,10 +236,27 @@ sub doCurl {
     my $dirLabel= ($dir =~ "POST") ?"Up" : "Down";
     my $timedout = ($curlRC == 28) ? "timeout":'full';
     $bw = sprintf("%8s",$bw);
-    return "$bw Mb/s (DNS:${time_namelookup}ms SYN:${Ping}ms $dir:${time_starttransfer}ms $dirLabel:${temps_transfert}ms:$timedout)";
+    return "$bw Mb/s (DNS:${time_namelookup}ms SYN:${Ping}ms $dir:${time_starttransfer}ms $dirLabel:${temps_transfert}ms:$timedout:$size_transfered)";
   }
 }
 
+sub Sizetobytes {
+  my $size = $_[0];
+  print "converting $size\n" if $debug;
+  my $value = qr/[1-9][0-9]*/;
+  my $unit = qr/[KMGT]$/;
+  if ($size =~ /^($value)($unit)$/)
+  {
+    if    ($2 eq "K") { $size = $1 * 1000; }
+    elsif ($2 eq "M") { $size = $1 * 1000*1000; }
+    elsif ($2 eq "G") { $size = $1 * 1000*1000*1000; }
+    elsif ($2 eq "T") { $size = $1 * 1000*1000*1000*1000; }
+		else
+      { die "fatal error in Sizetobytes\n"; }
+  }
+
+  return $size;
+}
 __DATA__
 4 80   http  .zip GET
 4 80   http  .jpg GET
