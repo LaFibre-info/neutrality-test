@@ -115,7 +115,7 @@ $SIG{TERM} = sub { print "Caught a sigterm $!\n"; cleanup(); die; };
 $SIG{PIPE} = sub { print "Caught a sigpipe $!\n" if $debug; }; # dont remove this or PUT tests will fail if timeout
 
 # null device is OS specific
-my $null = ($^O eq 'Win32') ? 'NUL' : '/dev/null';
+my $null = ($^O eq 'MSWin32') ? 'NUL' : '/dev/null';
 print "null device is $null\n" if $debug;
 
 # csv mode
