@@ -19,7 +19,7 @@ use LWP::Simple;
 use IO::String;
 use URI::URL;
 
-our $VERSION = 1.1.0;
+our $VERSION = 1.1.1;
 
 =pod
 
@@ -27,23 +27,38 @@ our $VERSION = 1.1.0;
   My::Module
 
 =head1 SYNOPSIS
-  neutrality-test
-  test your ISP neutrality
-
-=head1 DESCRIPTION
 neutrality-test [options] [url]
- Test your ISP neutrality
- Options:
+
+Arguments:
+
+  if no url argument, stdin is used instead.
+  The url (or stdin) must contain a list of test, one per line.
+  See below for the syntax.
+
+Options:
    -debug           display debug informations
    -help            brief help message
    -4               IPv4 only
    -6               IPv6 only
-   -csv             output results as a 'database ready' table
    -ul              perform only upload tests
    -dl              perform only download tests
-   -time <value>    timeout each test after <value> seconds
+   -time <value>    timeout, in seconds, for each test. default is 0 = no timeout
+   -csv             output results as a 'database ready' table
 
-if [url] is empty, stdin will be used. This is the list of tests to perform.
+Syntax of test line:
+
+   GET  4|6 <url> <...>         performs a download test from <url> in IPv4 ou IPv6
+   PUT  4|6 <size> <url> <...>  performs an upload test of <size> bytes to <url> in IPv4 ou IPv6
+   PRINT <rest of line>         print the rest of the line to stdout
+   TIME <value>                 change the timeout of following tests to <value> seconds. 0 = no timeout
+   # <rest of line>             comment, ignore rest of the line
+
+<url>: a valid url. Accepted schemes are : http, https, ftp
+<...>: additional arguments passed directly to the curl command (for instance --insecure)
+<size> format : <value>
+  <value> = <number> or <number>[KMGT]
+  K, M, G,T denote: Kilo, Mega, Giga and Tera (each are x1000 increment not 1024)
+
 
 =cut
 
@@ -336,8 +351,17 @@ sub doTest {
       print "$sizeparam : $size_transfered bytes\n";
       print "http_code : $httpcode\n";
     }
+
     # TODO check for more?
-    return "error (http $httpcode)" unless $httpcode eq "200" || $httpcode eq "100" || $httpcode eq "405";
+    if (!grep { $httpcode eq $_ } qw(000 100 150 200 405))
+    {
+      print  "error unhandled scheme code: $httpcode\n";
+      return "error (http $httpcode)";
+    }
+
+    # TODO
+    print "!(early timeout)!" if ($httpcode eq "000") && (!$csv);
+
     $time_namelookup = $time_namelookup*1000;
 
     $time_connect *= 1000;

@@ -1,29 +1,36 @@
 # neutrality-test
 test your ISP neutrality
 
-    neutrality-test [options]
-     Options:
+    neutrality-test [options] [url]
+
+    Arguments:
+
+      if no url argument, stdin is used instead.
+      The url (or stdin) must contain a list of test, one per line.
+      See below for the syntax.
+
+    Options:
        -debug           display debug informations
        -help            brief help message
        -4               IPv4 only
        -6               IPv6 only
-       -csv             output results as a 'database ready' table
-       -test "<test>"   performs the given test
-       -size <size>     change size
        -ul              perform only upload tests
        -dl              perform only download tests
-       -time <value>    timeout each test after <value> seconds
-       -server <server> specify server (dns name or IP)
+       -time <value>    timeout, in seconds, for each test. default is 0 = no timeout
+       -csv             output results as a 'database ready' table
 
-    <test> format = "IP PORT PROTO EXT DIR"
-      IP = 4 or 6
-      PORT = a valid TCP port
-      PROT = http or https
-      EXT  = any file extention with a leading dot (ex: .zip)
-      DIR  = GET or POST
-    <size> format = <value> or <value>/<value>
+    Syntax of test line:
+
+       GET  4|6 <url> <...>         performs a download test from <url> in IPv4 ou IPv6
+       PUT  4|6 <size> <url> <...>  performs an upload test of <size> bytes to <url> in IPv4 ou IPv6
+       PRINT <rest of line>         print the rest of the line to stdout
+       TIME <value>                 change the timeout of following tests to <value> seconds. 0 = no timeout
+       # <rest of line>             comment, ignore rest of the line
+
+    <url>: a valid url. Accepted schemes are : http, https, ftp
+    <...>: additional arguments passed directly to the curl command (for instance --insecure)
+    <size> format : <value>
       <value> = <number> or <number>[KMGT]
-      a single <value> set both upload & download size to the same value
-      a double <value>/<value> set download (1st) and upload (2nd) distinct sizes
-      K, M, G,T denote: Kilo, Mega, Giga and Tera
-      for instance "2G/20M" set 2GB download size and 20MB upload size
+      K, M, G,T denote: Kilo, Mega, Giga and Tera (each are x1000 increment not 1024)
+
+    see tests.txt and multi-isp.txt for sample tests.

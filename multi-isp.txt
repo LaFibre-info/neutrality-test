@@ -1,0 +1,27 @@
+PRINT Test various ISPs
+TIME 8
+PRINT Online intuxication Linux 3.2
+GET 4 http://ipv4.intuxication.testdebit.info/fichiers/5000Mo.dat
+GET 4 ftp://ipv4.intuxication.testdebit.info/5000Mo.dat
+GET 6 http://ipv6.intuxication.testdebit.info/fichiers/5000Mo.dat
+GET 6 ftp://ipv6.intuxication.testdebit.info/5000Mo.dat
+PRINT  Mediactive Network Linux 3.2
+GET 4 http://paris.cdn.mediactive-network.net/speedtest/5000Mo.dat
+PRINT Ikoula Linux 4.2 (conf défaut)
+GET 4 http://ikoula-ipv4.testdebit.info/fichiers/5000Mo.dat
+GET 6 http://ikoula-ipv6.testdebit.info/fichiers/5000Mo.dat
+PRINT Free Bezons
+GET 4 http://test-debit.free.fr/1048576.rnd
+PRINT OVH Roubaix
+GET 4 http://ipv4.rbx.proof.ovh.net/files/10Gio.dat
+GET 6 http://ipv6.rbx.proof.ovh.net/files/10Gio.dat
+PRINT OVH Strasbourg
+GET 4 http://ipv4.sbg.proof.ovh.net/files/10Gio.dat
+GET 6 http://ipv6.sbg.proof.ovh.net/files/10Gio.dat
+PRINT OVH Beauharnois (Canada)
+GET 4 http://ipv4.bhs.proof.ovh.net/files/10Gio.dat
+GET 6 http://ipv6.bhs.proof.ovh.net/files/10Gio.dat
+PRINT OTE (Greece)
+GET 4 http://speedtest.ftp.otenet.gr/files/test1Gb.db
+PRINT Internode (Australia)
+GET 4 http://mirror.internode.on.net/pub/test/5000meg.test
