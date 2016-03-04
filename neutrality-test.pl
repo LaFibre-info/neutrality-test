@@ -19,7 +19,7 @@ use LWP::Simple;
 use IO::String;
 use URI::URL;
 
-our $VERSION = 1.1.1;
+our $VERSION = 1.1.2;
 
 =pod
 
@@ -374,7 +374,7 @@ sub doTest {
 
     my $bw = sprintf("%.2f",  $size_transfered*8/1000/$temps_transfert);
 
-    my $dirLabel= ($direction =~ "POST") ?"Up" : "Down";
+    my $dirLabel= ($direction =~ "PUT") ?"Up" : "Down";
     my $timedout = ($curlRC == 28) ? "timeout":'full';
 
     if ($csv) {
