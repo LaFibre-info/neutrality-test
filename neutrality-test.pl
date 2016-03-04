@@ -15,8 +15,10 @@ use POSIX "strftime";
 use POSIX ":sys_wait_h";
 use IO::Handle;
 use Config;
+use LWP::Simple;
+use IO::String;
 
-our $VERSION = 1.0.3;
+our $VERSION = 1.1.0;
 
 =pod
 
@@ -62,18 +64,16 @@ neutrality-test [options]
 my $debug = 0;
 my $ul_only = 0;
 my $dl_only = 0;
-my $server = '3.testdebit.info';
-my $test = '';
 my $size_upload = '5000M';
 my $size_download = '5000M';
-my $timeout = 8;
+my $timeout = 0;
 my $csv = 0;
 my $ip4only = 0;
 my $ip6only = 0;
-# cmd line options
+my $testsurl = "-";
+
+# cmd line parsing - options
 GetOptions(
-  'server=s'=> \$server,
-  'test=s'=> \$test,
   'size=s'=> \&ParseSize,
   'timeout=i' => \$timeout,
   'csv' => \$csv,
@@ -84,30 +84,15 @@ GetOptions(
   'debug' => \$debug,
   'help' => sub { pod2usage(-verbose => 1) }) or pod2usage( {-verbose => 2 });
 
-# parse -size <value>
-sub ParseSize {
-      my ($n, $v) = @_;
-      print("parsing option $n with value $v\n") if $debug;
-      my $size_value = qr/[1-9][0-9]*[KMGT]?/;
-      if ($v =~ /^($size_value)$/)
-      {
-        $size_download = $1;
-        $size_upload = $1;
-        print "Found a single size $1\n" if $debug;
-      }
-      elsif ($v =~ /^($size_value)\/($size_value)$/) {
-        $size_download = $1;
-        $size_upload = $2;
-        print "Found a dual size $1 and $2\n" if $debug;
-      }
-      else {die('bad size value');}
-}
+# get the only argument which is the test url or none if stdin
+pod2usage( {-verbose => 2 }) if (@ARGV > 1);
+if (@ARGV == 1) { $testsurl = $ARGV[0]; }
+print "tests url = $testsurl\n" if $debug;
+
+# end of cmd line parsing
 
 # when in doubt
 print "$0 is running on $^O  \n" if $debug;
-printout ("Running on $Config{osname} - $Config{osvers} - $Config{archname}\n");
-my $datetime = localtime();
-printout ("started at: $datetime\n");
 
 # catch signals
 $SIG{INT} = sub { print "Caught a sigint $!\n"; cleanup(); die; };
@@ -118,30 +103,124 @@ $SIG{PIPE} = sub { print "Caught a sigpipe $!\n" if $debug; }; # dont remove thi
 my $null = ($^O eq 'MSWin32') ? 'NUL' : '/dev/null';
 print "null device is $null\n" if $debug;
 
-# csv mode
-print ("DATE;SERVER;IP;PROTO4;PORT;PROTO7;CONTENT;BW;DNS;PING;DIR;START;DURATION;TIMEDOUT;SIZE;CODE;TIME\n") if ($csv);
-
-# do all tests
-if ($test eq '') {
- while (my $line = <DATA>) {
-    print("parsing line: $line\n") if $debug;
-    last if ($line =~ "end");
-    chomp $line;
-    my ($ip, $port, $proto, $type, $direction) = parseTest($line);
-    my $size = ($direction eq 'GET') ? $size_download : $size_upload;
-    my $r = doTest($ip, $port, $proto, $type, $direction, $size, $timeout);
-    print "doTest returned $r" if $debug;
-  }
+# input file is stdin or content of $testsurl
+my $handle;
+if ($testsurl eq "-")
+{
+  $handle= *STDIN;
 }
-# do only a specific test
 else
 {
-  my ($ip, $port, $proto, $type, $direction) = parseTest($test);
-  my $size = ($direction eq 'GET') ? $size_download : $size_upload;
-  my $r = doTest($ip, $port, $proto, $type, $direction, $size , $timeout);
-  print "doTest returned $r" if $debug;
+   # hacky because we want to loop on a file handle
+   my $content = get($testsurl);
+   die "error getting $testsurl" unless defined $content;
+   $handle = IO::String->new($content);
 }
 
+# HEADER
+printout ("Running on $Config{osname} - $Config{osvers} - $Config{archname}\n");
+my $datetime = localtime();
+printout ("started at: $datetime\n");
+print ("DATE;SERVER;IP;PROTO4;PORT;PROTO7;CONTENT;BW;DNS;PING;DIR;START;DURATION;TIMEDOUT;SIZE;CODE;TIME\n") if ($csv);
+
+# loop thru tests & perform them
+my $linenum = 0;
+while (defined (my $line = <$handle>)) {
+  chomp $line;
+  $line =~ s/^\s+|\s+$//g; # = trim
+  $linenum++;
+  print("parsing line: $line\n") if $debug;
+  next if ($line eq ''); # skip blank lines
+
+  # syntax of a line
+  # GET <ip> <url>	<...> performs a download test
+  # PUT <ip> <size> <url> <...> peforms an upload test
+  # TIME <value> change timeout value
+  # PRINT <...>	print out the rest of the line
+  # #<...>	comment - ignore the lien
+  my $cmdpat = qr/GET|PUT|PRINT|TIME|#/;
+  if ($line =~ /^($cmdpat)\s*(.*)$/)
+  {
+    my $command = $1;
+    my $args = $2;
+    print "command: $command --> args: $args\n" if $debug;
+    if ($command eq "PRINT")
+    {
+      print "$args\n";
+    }
+    elsif ($command eq "#")
+    {
+      print "skipped comment at line $linenum\n" if $debug;
+    }
+    elsif ($command eq "TIME")
+    {
+      print "parse $args for new time\n" if $debug;
+      if ($args =~ m/\s*([1-9][0-9]*)/)
+      {
+        $timeout = $1;
+        print "changing timeout to $timeout\n" if $debug;
+      }
+      else
+      {
+        print "error bad time value line $linenum: $args\n";
+        last;
+      }
+
+    }
+    elsif ($command eq "GET")
+    {
+      # GET 4|6 URL ...
+      if ($args =~ m/^\s*([4|6])\s+(\S+)(.*)$/)
+      {
+         my $ip = $1;
+         my $url = $2;
+         my $extra = $3;
+         print "GET ip=$ip, url=$url, extra=$extra\n";
+      }
+      else
+      {
+        print "bad GET command line $linenum: $line\n";
+        last:
+      }
+
+    }
+    elsif ($command eq "PUT")
+    {
+      # GET 4|6 SIZE URL ...
+      if ($args =~ m/^\s*([4|6])\s+([1-9][0-9]*[KMGT]?)\s+(\S+)(.*)$/)
+      {
+         my $ip = $1;
+         my $size = $2;
+         my $url = $3;
+         my $extra = $4;
+         print "PUT ip=$ip, size=$size, url=$url, extra=$extra\n";
+      }
+      else
+      {
+        print "bad PUT command line $linenum: $line\n";
+        last;
+      }
+    }
+    else
+    {
+      print "syntax error line $linenum: unknown command $command\n";
+      last;
+    }
+  }
+  else
+  {
+    print "syntax error line $linenum: $line\n";
+    last;
+  }
+
+
+  #my ($ip, $port, $proto, $type, $direction) = parseTest($line);
+  #my $size = ($direction eq 'GET') ? $size_download : $size_upload;
+  #my $r = doTest($ip, $port, $proto, $type, $direction, $size, $timeout);
+  #print "doTest returned $r" if $debug;
+}
+
+# FOOTER
 $datetime = localtime();
 printout ("ended at: $datetime\n");
 
@@ -174,14 +253,14 @@ sub doTest {
 
   if (($direction eq "POST") && !$dl_only)
   {
-    $url = '-T "-" ';
-    $url .= " $proto://$server:$port";
+    #$url = '-T "-" ';
+    #$url .= " $proto://$server:$port";
   }
   elsif (!$ul_only)
   {
     # http://3totaldebit.info/fichiers/%tailleDL%Mo/%tailleDL%Mo.zip
     # TODO this is so specific to that server...
-    $url = "$proto://$server:$port/fichiers/${size}o/${size}o$type";
+    #$url = "$proto://$server:$port/fichiers/${size}o/${size}o$type";
   }
   # did we build an url ?
   return("skiped") if ($url eq "");
@@ -196,7 +275,7 @@ sub doTest {
   print "$ip $direction $url\n" if $debug;
 
   if ($csv) {
-    print strftime("%Y-%m-%d %H:%M:%S;", localtime(time)), "$server;$ip;TCP;$port;$proto;$type;";
+    #print strftime("%Y-%m-%d %H:%M:%S;", localtime(time)), "$server;$ip;TCP;$port;$proto;$type;";
   }
   else
   {
@@ -334,47 +413,22 @@ sub Sizetobytes {
 
   return $size;
 }
-__DATA__
-4 80   http  .zip GET
-4 80   http  .jpg GET
-4 80   http  .mp4 GET
-4 80   http  .pdf GET
-4 443  https .zip GET
-4 443  https .jpg GET
-4 554  http  .zip GET
-4 554  http  .jpg GET
-4 554  http  .mp4 GET
-4 993  https .zip GET
-4 993  https .jpg GET
-4 1194 https .zip GET
-4 1194 https .jpg GET
-4 6881 http  .zip GET
-4 6881 http  .jpg GET
-4 8080 http  .zip GET
-4 8080 http  .jpg GET
-4 8080 http  .mp4 GET
-6 80   http  .zip GET
-6 80   http  .jpg GET
-6 80   http  .mp4 GET
-6 443  https .zip GET
-6 554  http  .zip GET
-6 1194 https .zip GET
-6 6881 http  .zip GET
-6 8080 http  .zip GET
-4 80   http  .zip POST
-4 80   http  .jpg POST
-4 80   http  .mp4 POST
-4 443  https .zip POST
-4 554  http  .zip POST
-4 1194 https .zip POST
-4 6881 http  .zip POST
-4 8080 http  .zip POST
-6 80   http  .zip POST
-6 80   http  .jpg POST
-6 80   http  .zip POST
-6 443  https .zip POST
-6 554  http  .zip POST
-6 1194 https .zip POST
-6 6881 http  .zip POST
-6 8080 http  .zip POST
-end
+
+# parse -size <value>
+sub ParseSize {
+      my ($n, $v) = @_;
+      print("parsing option $n with value $v\n") if $debug;
+      my $size_value = qr/[1-9][0-9]*[KMGT]?/;
+      if ($v =~ /^($size_value)$/)
+      {
+        $size_download = $1;
+        $size_upload = $1;
+        print "Found a single size $1\n" if $debug;
+      }
+      elsif ($v =~ /^($size_value)\/($size_value)$/) {
+        $size_download = $1;
+        $size_upload = $2;
+        print "Found a dual size $1 and $2\n" if $debug;
+      }
+      else {die('bad size value');}
+}

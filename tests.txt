@@ -1,0 +1,50 @@
+PRINT Hello blabla
+TIME 8
+# tests de download en IPv4
+GET 4 http://3.testdebit.info:80/fichiers/5000Mo/5000Mo.zip
+GET 4 http://3.testdebit.info:80/fichiers/5000Mo/5000Mo.jpg
+GET 4 http://3.testdebit.info:80/fichiers/5000Mo/5000Mo.mp4
+GET 4 http://3.testdebit.info:80/fichiers/5000Mo/5000Mo.pdf
+GET 4 https://3.testdebit.info:443/fichiers/5000Mo/5000Mo.zip --insecure
+GET 4 https://3.testdebit.info:443/fichiers/5000Mo/5000Mo.jpg --insecure
+GET 4 http://3.testdebit.info:554/fichiers/5000Mo/5000Mo.zip
+GET 4 http://3.testdebit.info:554/fichiers/5000Mo/5000Mo.jpg
+GET 4 http://3.testdebit.info:554/fichiers/5000Mo/5000Mo.mp4
+GET 4 https://3.testdebit.info:993/fichiers/5000Mo/5000Mo.zip --insecure
+GET 4 https://3.testdebit.info:993/fichiers/5000Mo/5000Mo.jpg --insecure
+GET 4 https://3.testdebit.info:1194/fichiers/5000Mo/5000Mo.zip --insecure
+GET 4 https://3.testdebit.info:1194/fichiers/5000Mo/5000Mo.jpg --insecure
+GET 4 http://3.testdebit.info:6881/fichiers/5000Mo/5000Mo.zip
+GET 4 http://3.testdebit.info:6881/fichiers/5000Mo/5000Mo.jpg
+GET 4 http://3.testdebit.info:8080/fichiers/5000Mo/5000Mo.zip
+GET 4 http://3.testdebit.info:8080/fichiers/5000Mo/5000Mo.jpg
+GET 4 http://3.testdebit.info:8080/fichiers/5000Mo/5000Mo.mp4
+# tests de download en IPv6
+GET 6 http://3.testdebit.info:80/fichiers/5000Mo/5000Mo.zip
+GET 6 http://3.testdebit.info:80/fichiers/5000Mo/5000Mo.jpg
+GET 6 http://3.testdebit.info:80/fichiers/5000Mo/5000Mo.mp4
+GET 6 https://3.testdebit.info:443/fichiers/5000Mo/5000Mo.zip --insecure
+GET 6 http://3.testdebit.info:554/fichiers/5000Mo/5000Mo.zip
+GET 6 https://3.testdebit.info:1194/fichiers/5000Mo/5000Mo.zip --insecure
+GET 6 http://3.testdebit.info:6881/fichiers/5000Mo/5000Mo.zip
+GET 6 http://3.testdebit.info:8080/fichiers/5000Mo/5000Mo.zip
+
+# tests d'upload en IPv4
+PUT 4 5000M  http://3.testdebit.info:80
+PUT 4 5G  http://3.testdebit.info:80
+PUT 4 500K  http://3.testdebit.info:80
+PUT 4 5 https://3.testdebit.info:443  --insecure
+PUT 4 5000M  http://3.testdebit.info:554
+PUT 4 5000M  https://3.testdebit.info:1194 --insecure
+PUT 4 5000M  http://3.testdebit.info:6881
+PUT 4 5000M  http://3.testdebit.info:8080
+
+# tests d'upload en IPv6
+PUT 6 5000M  http://3.testdebit.info:80
+#PUT 6 5000M  http://3.testdebit.info:80
+#PUT 6 5000M  http://3.testdebit.info:80
+PUT 6 5000M  https://3.testdebit.info:443 --insecure
+PUT 6 5000M  http://3.testdebit.info:554
+PUT 6 5000M  https://3.testdebit.info:1194 --insecure
+PUT 6 5000M  http://3.testdebit.info:6881
+PUT 6 5000M  http://3.testdebit.info:8080
