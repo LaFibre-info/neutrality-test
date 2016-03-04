@@ -1,10 +1,11 @@
-PRINT Hello blabla
+PRINT Test neutralité FAI
 TIME 8
 # tests de download en IPv4
-GET 4 http://3.testdebit.info:80/fichiers/5000Mo/5000Mo.zip
+GET 4 hTTp://3.testdebit.info/fichiers/5000Mo/5000Mo.zip
+GET 4 http://3.testdebit.info/fichiers/5000Mo/5000Mo.zip
 GET 4 http://3.testdebit.info:80/fichiers/5000Mo/5000Mo.jpg
-GET 4 http://3.testdebit.info:80/fichiers/5000Mo/5000Mo.mp4
-GET 4 http://3.testdebit.info:80/fichiers/5000Mo/5000Mo.pdf
+GET 4 http://3.testdebit.info/fichiers/5000Mo/5000Mo.mp4
+GET 4 http://3.testdebit.info/fichiers/5000Mo/5000Mo.pdf
 GET 4 https://3.testdebit.info:443/fichiers/5000Mo/5000Mo.zip --insecure
 GET 4 https://3.testdebit.info:443/fichiers/5000Mo/5000Mo.jpg --insecure
 GET 4 http://3.testdebit.info:554/fichiers/5000Mo/5000Mo.zip
@@ -19,6 +20,7 @@ GET 4 http://3.testdebit.info:6881/fichiers/5000Mo/5000Mo.jpg
 GET 4 http://3.testdebit.info:8080/fichiers/5000Mo/5000Mo.zip
 GET 4 http://3.testdebit.info:8080/fichiers/5000Mo/5000Mo.jpg
 GET 4 http://3.testdebit.info:8080/fichiers/5000Mo/5000Mo.mp4
+
 # tests de download en IPv6
 GET 6 http://3.testdebit.info:80/fichiers/5000Mo/5000Mo.zip
 GET 6 http://3.testdebit.info:80/fichiers/5000Mo/5000Mo.jpg

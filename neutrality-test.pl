@@ -17,6 +17,7 @@ use IO::Handle;
 use Config;
 use LWP::Simple;
 use IO::String;
+use URI::URL;
 
 our $VERSION = 1.1.0;
 
@@ -30,7 +31,7 @@ our $VERSION = 1.1.0;
   test your ISP neutrality
 
 =head1 DESCRIPTION
-neutrality-test [options]
+neutrality-test [options] [url]
  Test your ISP neutrality
  Options:
    -debug           display debug informations
@@ -38,25 +39,11 @@ neutrality-test [options]
    -4               IPv4 only
    -6               IPv6 only
    -csv             output results as a 'database ready' table
-   -test "<test>"   performs the given test
-   -size <size>     change size
    -ul              perform only upload tests
    -dl              perform only download tests
    -time <value>    timeout each test after <value> seconds
-   -server <server> specify server (dns name or IP)
 
-<test> format = "IP PORT PROTO EXT DIR"
-  IP = 4 or 6
-  PORT = a valid TCP port
-  PROT = http or https
-  EXT  = any file extention with a leading dot (ex: .zip)
-  DIR  = GET or POST
-<size> format = <value> or <value>/<value>
-  <value> = <number> or <number>[KMGT]
-  a single <value> set both upload & download size to the same value
-  a double <value>/<value> set download (1st) and upload (2nd) distinct sizes
-  K, M, G,T denote: Kilo, Mega, Giga and Tera
-  for instance "2G/20M" set 2GB download size and 20MB upload size
+if [url] is empty, stdin will be used. This is the list of tests to perform.
 
 =cut
 
@@ -64,8 +51,6 @@ neutrality-test [options]
 my $debug = 0;
 my $ul_only = 0;
 my $dl_only = 0;
-my $size_upload = '5000M';
-my $size_download = '5000M';
 my $timeout = 0;
 my $csv = 0;
 my $ip4only = 0;
@@ -74,7 +59,6 @@ my $testsurl = "-";
 
 # cmd line parsing - options
 GetOptions(
-  'size=s'=> \&ParseSize,
   'timeout=i' => \$timeout,
   'csv' => \$csv,
   'ul' => \$ul_only,
@@ -121,7 +105,8 @@ else
 printout ("Running on $Config{osname} - $Config{osvers} - $Config{archname}\n");
 my $datetime = localtime();
 printout ("started at: $datetime\n");
-print ("DATE;SERVER;IP;PROTO4;PORT;PROTO7;CONTENT;BW;DNS;PING;DIR;START;DURATION;TIMEDOUT;SIZE;CODE;TIME\n") if ($csv);
+# 2016-03-04 20:33:GET;4;http;80;919.41;4;3;4;995;timeout;114351224;200;999;http://3.testdebit.info/fichiers/5000Mo/5000Mo.zip
+print ("DATE;CMD;IP;PROTO7;PORT;BW;DNS;PING;START;DURATION;TIMEDOUT;SIZE;CODE;TIME;URL\n") if ($csv);
 
 # loop thru tests & perform them
 my $linenum = 0;
@@ -138,7 +123,7 @@ while (defined (my $line = <$handle>)) {
   # TIME <value> change timeout value
   # PRINT <...>	print out the rest of the line
   # #<...>	comment - ignore the lien
-  my $cmdpat = qr/GET|PUT|PRINT|TIME|#/;
+  my $cmdpat = qr/GET|PUT|PRINT|TIME|#/i;
   if ($line =~ /^($cmdpat)\s*(.*)$/)
   {
     my $command = $1;
@@ -146,7 +131,7 @@ while (defined (my $line = <$handle>)) {
     print "command: $command --> args: $args\n" if $debug;
     if ($command eq "PRINT")
     {
-      print "$args\n";
+      print "$args\n" if (!$csv);
     }
     elsif ($command eq "#")
     {
@@ -172,10 +157,21 @@ while (defined (my $line = <$handle>)) {
       # GET 4|6 URL ...
       if ($args =~ m/^\s*([4|6])\s+(\S+)(.*)$/)
       {
-         my $ip = $1;
-         my $url = $2;
-         my $extra = $3;
-         print "GET ip=$ip, url=$url, extra=$extra\n";
+        my $ip = $1;
+        my $url = url $2;
+        my $extra = $3;
+        if (grep { $url->scheme eq $_ } qw(http https ftp)) #TODO add more ?
+        {
+          my $port = $url->port;
+          print ("GET $ip proto: ", $url->scheme, " port: $port\n") if $debug;
+          my $r = doTest("GET", $ip, $url, 0, $timeout, $extra);
+          print "doTest returned $r" if $debug;
+        }
+        else
+        {
+          print "error line $linenum: GET ip=$ip, url=$url (unknown proto) extra=$extra\n";
+          last;
+        }
       }
       else
       {
@@ -191,9 +187,20 @@ while (defined (my $line = <$handle>)) {
       {
          my $ip = $1;
          my $size = $2;
-         my $url = $3;
+         my $url = url $3;
          my $extra = $4;
-         print "PUT ip=$ip, size=$size, url=$url, extra=$extra\n";
+         if (grep { $url->scheme eq $_ } qw(http https ftp))
+         {
+           my $port = $url->port;
+           print ("PUT $ip size $size proto: ", $url->scheme, " port: $port\n") if $debug;
+           my $r = doTest("PUT", $ip, $url, $size, $timeout, $extra);
+           print "doTest returned $r" if $debug;
+         }
+         else
+         {
+           print "error line $linenum: PUT ip=$ip, url=$url (unknown proto) extra=$extra\n";
+           last;
+         }
       }
       else
       {
@@ -212,12 +219,6 @@ while (defined (my $line = <$handle>)) {
     print "syntax error line $linenum: $line\n";
     last;
   }
-
-
-  #my ($ip, $port, $proto, $type, $direction) = parseTest($line);
-  #my $size = ($direction eq 'GET') ? $size_download : $size_upload;
-  #my $r = doTest($ip, $port, $proto, $type, $direction, $size, $timeout);
-  #print "doTest returned $r" if $debug;
 }
 
 # FOOTER
@@ -235,77 +236,46 @@ sub cleanup {
   # nothing more
 }
 
-# parse test. TODO some asserts ?
-sub parseTest {
-  my ($ip, $port, $proto, $type, $direction) = split /\s+/, $_[0];
-  print  "parsed D=$direction, IP=$ip, PORT=$port, PROTO=$proto, TYPE=$type\n" if $debug;
-  return ($ip, $port, $proto, $type, $direction);
-}
-
 # performs a test
-# TODO
+# it's the big one!
 sub doTest {
-  my ($ip, $port, $proto, $type, $direction, $size, $timeout) = @_;
-  my $url = "";
-
+  my ($direction, $ip, $url, $size, $timeout, $extra) = @_;
   return("skiped ip6") if ($ip4only && $ip eq 6);
   return("skiped ip4") if ($ip6only && $ip eq 4);
 
-  if (($direction eq "POST") && !$dl_only)
-  {
-    #$url = '-T "-" ';
-    #$url .= " $proto://$server:$port";
-  }
-  elsif (!$ul_only)
-  {
-    # http://3totaldebit.info/fichiers/%tailleDL%Mo/%tailleDL%Mo.zip
-    # TODO this is so specific to that server...
-    #$url = "$proto://$server:$port/fichiers/${size}o/${size}o$type";
-  }
-  # did we build an url ?
-  return("skiped") if ($url eq "");
+  my $curl = $url->as_string . " $extra";
 
-  # TODO: this is curl specific  , put it in doCurl ?
-  if (lc $proto eq "https")
+  if ($direction eq "PUT")
   {
-    $url = "--insecure $url";
+    return "skiped" if $dl_only;
+    $curl = '-T "-" ' . $curl;
+  }
+  elsif ($direction eq "GET")
+  {
+    return "skiped" if $ul_only;
+  }
+  else
+  {
+     die "fatal error - unexcepted value of direction = $direction";
   }
 
   #perform the Curl
   print "$ip $direction $url\n" if $debug;
 
-  if ($csv) {
-    #print strftime("%Y-%m-%d %H:%M:%S;", localtime(time)), "$server;$ip;TCP;$port;$proto;$type;";
-  }
-  else
-  {
-    printf ("IPv$ip TCP %-6s %6s %5s: ",$port,$proto,$type);
+  if (!$csv) {
+    printf ("IPv$ip %-6s %-6s : ",$url->scheme,$url->port);
   }
 
-  my $result = doCurl($ip,$direction,$timeout, $size, $url);
-  print "$result\n";
-  return "ok";
-}
-
-
-# do http download and compute metrics
-# args:
-#    4 or 6
-#    POST or GET
-#    timeout
-#    rest of the curl args
-# TODO: split in 2, seperate curl'ing & calculations from pretty pretting
-sub doCurl {
-  my ($ip, $dir, $timeout, $size, $url) = @_;
-  print("doCurl args = @_\n") if $debug;
-  my $sizeparam = ($dir eq 'GET') ? "size_download" : "size_upload";
+  # setup the curl command
+  my $sizeparam = ($direction eq 'GET') ? "size_download" : "size_upload";
   my $timeout_cmd = ($timeout == 0) ? "" : "--max-time $timeout";
-  my $curlcmd = "curl -$ip -s $timeout_cmd --write-out \"%{time_namelookup} %{time_connect} %{time_starttransfer} %{time_total} %{$sizeparam} %{http_code}\" -o $null $url"; #  2>&1 ?
-  print "$curlcmd \n" if $debug;
+  my $curlcmd = "curl -$ip -s $timeout_cmd --write-out \"%{time_namelookup} %{time_connect} %{time_starttransfer} %{time_total} %{$sizeparam} %{http_code}\" -o $null $curl";
+  print "CURL= $curlcmd \n" if $debug;
   my $result = '';
   my $curlRC = -1;
 
-  if ($dir eq "GET") {
+  # perform the curl
+  if ($direction eq "GET") {
     $result = `$curlcmd`;
     $curlRC = $? >>8;
   }
@@ -380,14 +350,19 @@ sub doCurl {
 
     my $bw = sprintf("%.2f",  $size_transfered*8/1000/$temps_transfert);
 
-    my $dirLabel= ($dir =~ "POST") ?"Up" : "Down";
+    my $dirLabel= ($direction =~ "POST") ?"Up" : "Down";
     my $timedout = ($curlRC == 28) ? "timeout":'full';
+
     if ($csv) {
-      return "$bw;${time_namelookup};${Ping};$dir;${time_starttransfer};${temps_transfert};$timedout;$size_transfered;$httpcode;$time_total";
+      print strftime("%Y-%m-%d %H:%M:%S;", localtime(time)),
+        "$direction;$ip;" , $url->scheme , ";" , $url->port , ";",
+        "$bw;${time_namelookup};${Ping};${time_starttransfer};${temps_transfert};$timedout;$size_transfered;$httpcode;$time_total;",
+        $url->as_string , "\n";
     }
-    else      {
+    else  {
       $bw = sprintf("%8s",$bw);
-      return "$bw Mb/s (DNS:${time_namelookup}ms SYN:${Ping}ms $dir:${time_starttransfer}ms $dirLabel:${temps_transfert}ms:$timedout:$size_transfered)";}
+      print "$bw Mb/s (DNS:${time_namelookup}ms SYN:${Ping}ms $direction:${time_starttransfer}ms $dirLabel:${temps_transfert}ms:$timedout:$size_transfered)\n";
+    }
   }
 }
 
@@ -412,23 +387,4 @@ sub Sizetobytes {
   }
 
   return $size;
-}
-
-# parse -size <value>
-sub ParseSize {
-      my ($n, $v) = @_;
-      print("parsing option $n with value $v\n") if $debug;
-      my $size_value = qr/[1-9][0-9]*[KMGT]?/;
-      if ($v =~ /^($size_value)$/)
-      {
-        $size_download = $1;
-        $size_upload = $1;
-        print "Found a single size $1\n" if $debug;
-      }
-      elsif ($v =~ /^($size_value)\/($size_value)$/) {
-        $size_download = $1;
-        $size_upload = $2;
-        print "Found a dual size $1 and $2\n" if $debug;
-      }
-      else {die('bad size value');}
 }
