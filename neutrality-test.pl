@@ -81,7 +81,7 @@ GetOptions(
   '-4' => \$ip4only,
   '-6' => \$ip6only,
   'debug' => \$debug,
-  'help' => sub { pod2usage(-verbose => 1) }) or pod2usage( {-verbose => 2 });
+  'help' => sub { pod2usage(-verbose => 2) }) or pod2usage( {-verbose => 2 });
 
 # get the only argument which is the test url or none if stdin
 pod2usage( {-verbose => 2 }) if (@ARGV > 1);
