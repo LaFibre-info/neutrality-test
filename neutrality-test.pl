@@ -19,7 +19,7 @@ use LWP::Simple;
 use IO::String;
 use URI::URL;
 
-our $VERSION = 1.1.2;
+our $VERSION = 1.1.3;
 
 =pod
 
@@ -119,7 +119,7 @@ else
 # HEADER
 printout ("Running on $Config{osname} - $Config{osvers} - $Config{archname}\n");
 my $datetime = localtime();
-printout ("started at: $datetime\n");
+printout ("Started at: $datetime\n");
 # 2016-03-04 20:33:GET;4;http;80;919.41;4;3;4;995;timeout;114351224;200;999;http://3.testdebit.info/fichiers/5000Mo/5000Mo.zip
 print ("DATE;CMD;IP;PROTO7;PORT;BW;DNS;PING;START;DURATION;TIMEDOUT;SIZE;CODE;TIME;URL\n") if ($csv);
 
@@ -238,7 +238,7 @@ while (defined (my $line = <$handle>)) {
 
 # FOOTER
 $datetime = localtime();
-printout ("ended at: $datetime\n");
+printout ("Ended at: $datetime\n");
 
 # clean up
 cleanup();
@@ -359,9 +359,6 @@ sub doTest {
       return "error (http $httpcode)";
     }
 
-    # TODO
-    print "!(early timeout)!" if ($httpcode eq "000") && (!$csv);
-
     $time_namelookup = $time_namelookup*1000;
 
     $time_connect *= 1000;
@@ -370,9 +367,9 @@ sub doTest {
     $time_starttransfer = $time_starttransfer*1000-$time_connect;
 
     $time_total *= 1000;
-    my $temps_transfert = $time_total-$time_starttransfer;
+    my $transfer_time = $time_total-$time_starttransfer;
 
-    my $bw = sprintf("%.2f",  $size_transfered*8/1000/$temps_transfert);
+    my $bw = sprintf("%.2f",  $size_transfered*8/1000/$transfer_time);
 
     my $dirLabel= ($direction =~ "PUT") ?"Up" : "Down";
     my $timedout = ($curlRC == 28) ? "timeout":'full';
@@ -380,12 +377,19 @@ sub doTest {
     if ($csv) {
       print strftime("%Y-%m-%d %H:%M:%S;", localtime(time)),
         "$direction;$ip;" , $url->scheme , ";" , $url->port , ";",
-        "$bw;${time_namelookup};${Ping};${time_starttransfer};${temps_transfert};$timedout;$size_transfered;$httpcode;$time_total;",
+        "$bw;${time_namelookup};${Ping};${time_starttransfer};${transfer_time};$timedout;$size_transfered;$httpcode;$time_total;",
         $url->as_string , "\n";
     }
     else  {
+      # TODO
+      if ($httpcode eq "000") { print "!timeout before receving any data!\n" ; return;}
       $bw = sprintf("%8s",$bw);
-      print "$bw Mb/s (DNS:${time_namelookup}ms SYN:${Ping}ms $direction:${time_starttransfer}ms $dirLabel:${temps_transfert}ms:$timedout:$size_transfered)\n";
+      $time_namelookup = sprintf("%.0f",$time_namelookup);
+      $Ping = sprintf("%.0f",$Ping);
+      $time_starttransfer = sprintf("%.0f",$time_starttransfer);
+      $transfer_time = sprintf("%.0f",$transfer_time);
+      $size_transfered = scaleIt($size_transfered);
+      print "$bw Mb/s (DNS:${time_namelookup}ms SYN:${Ping}ms $direction:${time_starttransfer}ms $dirLabel:${transfer_time}ms:$timedout:$size_transfered)\n";
     }
   }
 }
@@ -411,4 +415,12 @@ sub Sizetobytes {
   }
 
   return $size;
+}
+
+# http://www.perlmonks.org/?node_id=378542
+sub scaleIt {
+    my( $size, $n ) =( shift, 0 );
+    ++$n and $size /= 1000 until $size < 1000;
+    return sprintf "%.2f %s",
+           $size, ( qw[ B KB MB GB TB PB EB] )[ $n ];
 }
