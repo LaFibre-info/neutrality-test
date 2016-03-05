@@ -19,7 +19,7 @@ use LWP::Simple;
 use IO::String;
 use URI::URL;
 
-our $VERSION = 1.1.3;
+our $VERSION = 1.1.4;
 
 =pod
 
@@ -47,12 +47,13 @@ Options:
 
 Syntax of test line:
 
-   GET  4|6 <url> <...>         performs a download test from <url> in IPv4 ou IPv6
-   PUT  4|6 <size> <url> <...>  performs an upload test of <size> bytes to <url> in IPv4 ou IPv6
+   GET <label> 4|6 <url> <...>         performs a download test from <url> in IPv4 ou IPv6
+   PUT <label> 4|6 <size> <url> <...>  performs an upload test of <size> bytes to <url> in IPv4 ou IPv6
    PRINT <rest of line>         print the rest of the line to stdout
    TIME <value>                 change the timeout of following tests to <value> seconds. 0 = no timeout
    # <rest of line>             comment, ignore rest of the line
 
+<label>: a word or a phrase between quotes (") (whitespace = space or tab)
 <url>: a valid url. Accepted schemes are : http, https, ftp
 <...>: additional arguments passed directly to the curl command (for instance --insecure)
 <size> format : <value>
@@ -121,7 +122,7 @@ printout ("Running on $Config{osname} - $Config{osvers} - $Config{archname}\n");
 my $datetime = localtime();
 printout ("Started at: $datetime\n");
 # 2016-03-04 20:33:GET;4;http;80;919.41;4;3;4;995;timeout;114351224;200;999;http://3.testdebit.info/fichiers/5000Mo/5000Mo.zip
-print ("DATE;CMD;IP;PROTO7;PORT;BW;DNS;PING;START;DURATION;TIMEDOUT;SIZE;CODE;TIME;URL\n") if ($csv);
+print ("LABEL;DATE;CMD;IP;PROTO7;PORT;BW;DNS;PING;START;DURATION;TIMEDOUT;SIZE;CODE;TIME;URL\n") if ($csv);
 
 # loop thru tests & perform them
 my $linenum = 0;
@@ -169,17 +170,24 @@ while (defined (my $line = <$handle>)) {
     }
     elsif ($command eq "GET")
     {
-      # GET 4|6 URL ...
-      if ($args =~ m/^\s*([4|6])\s+(\S+)(.*)$/)
+      # GET [LABEL] 4|6 URL ...
+      my $labelpat = qr/(".*"\s+)?/;
+      my $label = "";
+      if ($args =~ m/^\s*$labelpat([4|6])\s+(\S+)(.*)$/)
       {
-        my $ip = $1;
-        my $url = url $2;
-        my $extra = $3;
+        $label = $1 if defined $1;
+        my $ip = $2;
+        my $url = url $3;
+        my $extra = $4;
+
+         $label =~ s/\s+$//;
+         $label =~ tr/"//d;
+
         if (grep { $url->scheme eq $_ } qw(http https ftp)) #TODO add more ?
         {
           my $port = $url->port;
           print ("GET $ip proto: ", $url->scheme, " port: $port\n") if $debug;
-          my $r = doTest("GET", $ip, $url, 0, $timeout, $extra);
+          my $r = doTest("GET", $ip, $url, 0, $timeout, $label, $extra);
           print "doTest returned $r" if $debug;
         }
         else
@@ -197,18 +205,26 @@ while (defined (my $line = <$handle>)) {
     }
     elsif ($command eq "PUT")
     {
-      # GET 4|6 SIZE URL ...
-      if ($args =~ m/^\s*([4|6])\s+([1-9][0-9]*[KMGT]?)\s+(\S+)(.*)$/)
+      # GET [LABEL] 4|6 SIZE URL ...
+      my $labelpat = qr/(".*"\s+)?/;
+      my $label = "";
+
+      if ($args =~ m/^\s*$labelpat([4|6])\s+([1-9][0-9]*[KMGT]?)\s+(\S+)(.*)$/)
       {
-         my $ip = $1;
-         my $size = $2;
-         my $url = url $3;
-         my $extra = $4;
+         $label = $1 if defined $1;
+         my $ip = $2;
+         my $size = $3;
+         my $url = url $4;
+         my $extra = $5;
+
+         $label =~ s/\s+$//;
+         $label =~ tr/"//d;
+
          if (grep { $url->scheme eq $_ } qw(http https ftp))
          {
            my $port = $url->port;
            print ("PUT $ip size $size proto: ", $url->scheme, " port: $port\n") if $debug;
-           my $r = doTest("PUT", $ip, $url, $size, $timeout, $extra);
+           my $r = doTest("PUT", $ip, $url, $size, $timeout, $label, $extra);
            print "doTest returned $r" if $debug;
          }
          else
@@ -254,7 +270,7 @@ sub cleanup {
 # performs a test
 # it's the big one!
 sub doTest {
-  my ($direction, $ip, $url, $size, $timeout, $extra) = @_;
+  my ($direction, $ip, $url, $size, $timeout, $label, $extra) = @_;
   return("skiped ip6") if ($ip4only && $ip eq 6);
   return("skiped ip4") if ($ip6only && $ip eq 4);
 
@@ -278,7 +294,8 @@ sub doTest {
   print "$ip $direction $url\n" if $debug;
 
   if (!$csv) {
-    printf ("IPv$ip %-6s %-6s : ",$url->scheme,$url->port);
+    printf ("$label ") if $label ne "";
+    printf ("IPv$ip %-5s %-5s:", $url->scheme,$url->port);
   }
 
   # setup the curl command
@@ -372,10 +389,10 @@ sub doTest {
     my $bw = sprintf("%.2f",  $size_transfered*8/1000/$transfer_time);
 
     my $dirLabel= ($direction =~ "PUT") ?"Up" : "Down";
-    my $timedout = ($curlRC == 28) ? "timeout":'full';
+    my $timedout = ($curlRC == 28) ? "T":'F';
 
     if ($csv) {
-      print strftime("%Y-%m-%d %H:%M:%S;", localtime(time)),
+      print strftime("$label;%Y-%m-%d %H:%M:%S;", localtime(time)),
         "$direction;$ip;" , $url->scheme , ";" , $url->port , ";",
         "$bw;${time_namelookup};${Ping};${time_starttransfer};${transfer_time};$timedout;$size_transfered;$httpcode;$time_total;",
         $url->as_string , "\n";
@@ -389,7 +406,7 @@ sub doTest {
       $time_starttransfer = sprintf("%.0f",$time_starttransfer);
       $transfer_time = sprintf("%.0f",$transfer_time);
       $size_transfered = scaleIt($size_transfered);
-      print "$bw Mb/s (DNS:${time_namelookup}ms SYN:${Ping}ms $direction:${time_starttransfer}ms $dirLabel:${transfer_time}ms:$timedout:$size_transfered)\n";
+      print "$bw Mb/s (DNS:${time_namelookup}ms SYN:${Ping}ms $direction:${time_starttransfer}ms $dirLabel:${transfer_time}ms $size_transfered $timedout)\n";
     }
   }
 }
