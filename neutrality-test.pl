@@ -47,8 +47,8 @@ Options:
 
 Syntax of test line:
 
-   GET <label> 4|6 <url> <...>         performs a download test from <url> in IPv4 ou IPv6
-   PUT <label> 4|6 <size> <url> <...>  performs an upload test of <size> bytes to <url> in IPv4 ou IPv6
+   GET [<label>] 4|6 <url> <...>         performs a download test from <url> in IPv4 ou IPv6
+   PUT [<label>] 4|6 <size> <url> <...>  performs an upload test of <size> bytes to <url> in IPv4 ou IPv6
    PRINT <rest of line>         print the rest of the line to stdout
    TIME <value>                 change the timeout of following tests to <value> seconds. 0 = no timeout
    # <rest of line>             comment, ignore rest of the line
@@ -59,7 +59,6 @@ Syntax of test line:
 <size> format : <value>
   <value> = <number> or <number>[KMGT]
   K, M, G,T denote: Kilo, Mega, Giga and Tera (each are x1000 increment not 1024)
-
 
 =cut
 
