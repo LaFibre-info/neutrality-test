@@ -1,5 +1,6 @@
 # neutrality-test
 test your ISP neutrality
+version 1.1.5
 
         neutrality-test [options] [url]
 
@@ -33,6 +34,5 @@ test your ISP neutrality
         <size> format : <value>
           <value> = <number> or <number>[KMGT]
           K, M, G,T denote: Kilo, Mega, Giga and Tera (each are x1000 increment not 1024)
-
 
   see tests.txt, multi-isp.txt and def.txt for sample tests.

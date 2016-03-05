@@ -19,7 +19,7 @@ use LWP::Simple;
 use IO::String;
 use URI::URL;
 
-our $VERSION = 1.1.4;
+our $VERSION = "1.1.5";
 
 =pod
 
@@ -51,6 +51,7 @@ Syntax of test line:
    PUT [<label>] 4|6 <size> <url> <...>  performs an upload test of <size> bytes to <url> in IPv4 ou IPv6
    PRINT <rest of line>         print the rest of the line to stdout
    TIME <value>                 change the timeout of following tests to <value> seconds. 0 = no timeout
+                                all TIME lines are ignored if the -time option exists
    # <rest of line>             comment, ignore rest of the line
 
 <label>: a word or a phrase between quotes (") (whitespace = space or tab)
@@ -66,7 +67,7 @@ Syntax of test line:
 my $debug = 0;
 my $ul_only = 0;
 my $dl_only = 0;
-my $timeout = 0;
+my $timeout = 0; my $allowtimeout = 1;
 my $csv = 0;
 my $ip4only = 0;
 my $ip6only = 0;
@@ -81,7 +82,9 @@ GetOptions(
   '-4' => \$ip4only,
   '-6' => \$ip6only,
   'debug' => \$debug,
+  'version' => sub { print "$0 version $VERSION\n"; exit; },
   'help' => sub { pod2usage(-verbose => 2) }) or pod2usage( {-verbose => 2 });
+$allowtimeout = 0 if ($timeout);
 
 # get the only argument which is the test url or none if stdin
 pod2usage( {-verbose => 2 }) if (@ARGV > 1);
@@ -157,7 +160,7 @@ while (defined (my $line = <$handle>)) {
       print "parse $args for new time\n" if $debug;
       if ($args =~ m/\s*([1-9][0-9]*)/)
       {
-        $timeout = $1;
+        $timeout = $1 if ($allowtimeout);
         print "changing timeout to $timeout\n" if $debug;
       }
       else
@@ -438,5 +441,5 @@ sub scaleIt {
     my( $size, $n ) =( shift, 0 );
     ++$n and $size /= 1000 until $size < 1000;
     return sprintf "%.2f %s",
-           $size, ( qw[ B KB MB GB TB PB EB] )[ $n ];
+           $size, ( qw[ B kB MB GB TB PB EB] )[ $n ];
 }

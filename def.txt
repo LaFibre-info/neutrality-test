@@ -1,5 +1,5 @@
 PRINT Network neutrality test - Server localization: France - Hosting by Bouygues Telecom
-TIME 1
+TIME 8
 PRINT IPv4 download tests
 GET "zip" 4 http://3.testdebit.info/fichiers/5000Mo/5000Mo.zip
 GET "jpg" 4 http://3.testdebit.info/fichiers/5000Mo/5000Mo.jpg
