@@ -42,7 +42,7 @@ Options:
    -6               IPv6 only
    -ul              perform only upload tests
    -dl              perform only download tests
-   -time <value>    timeout, in seconds, for each test. default is 0 = no timeout
+   -timeout <value> timeout, in seconds, for each test. default is 0 = no timeout
    -csv             output results as a 'database ready' table
 
 Syntax of test line:

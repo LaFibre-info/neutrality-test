@@ -17,10 +17,10 @@ version 1.1.5
            -6               IPv6 only
            -ul              perform only upload tests
            -dl              perform only download tests
-           -time <value>    timeout, in seconds, for each test. default is 0 = no timeout
+           -timeout <value> timeout, in seconds, for each test. default is 0 = no timeout
            -csv             output results as a 'database ready' table
 
-        Syntax of test line:
+        Syntax of a test line:
 
            GET [<label>] 4|6 <url> <...>         performs a download test from <url> in IPv4 ou IPv6
            PUT [<label>] 4|6 <size> <url> <...>  performs an upload test of <size> bytes to <url> in IPv4 ou IPv6
