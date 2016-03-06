@@ -113,7 +113,7 @@ if ($testsurl eq "-")
 else
 {
    # hacky because we want to loop on a file handle
-   my $content = `curl -s -k -L '$testsurl'`;
+   my $content = `curl -s -k -L $testsurl`;
    die "error getting $testsurl" if ($content eq "");
    $handle = IO::String->new($content);
 }
