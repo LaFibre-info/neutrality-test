@@ -30,8 +30,8 @@ neutrality-test [options] [url]
 
 Arguments:
 
-  if no url argument, stdin is used instead.
-  The url (or stdin) must contain a list of test, one per line.
+  If no url argument, stdin is used instead.
+  The url (or stdin) must contain a list of tests, one per line.
   See below for the syntax.
 
 Options:
@@ -46,8 +46,8 @@ Options:
 
 Syntax of test line:
 
-   GET [<label>] 4|6 <url> <...>         performs a download test from <url> in IPv4 ou IPv6
-   PUT [<label>] 4|6 <size> <url> <...>  performs an upload test of <size> bytes to <url> in IPv4 ou IPv6
+   GET [<label>] 4|6 <url> <...>         perform a download test from <url> in IPv4 or IPv6
+   PUT [<label>] 4|6 <size> <url> <...>  perform an upload test of <size> bytes to <url> in IPv4 or IPv6
    PRINT <rest of line>         print the rest of the line to stdout
    TIME <value>                 change the timeout of following tests to <value> seconds. 0 = no timeout
                                 all TIME lines are ignored if the -time option exists
