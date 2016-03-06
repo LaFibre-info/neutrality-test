@@ -15,7 +15,6 @@ use POSIX "strftime";
 use POSIX ":sys_wait_h";
 use IO::Handle;
 use Config;
-use LWP::Simple;
 use IO::String;
 use URI::URL;
 
@@ -114,8 +113,8 @@ if ($testsurl eq "-")
 else
 {
    # hacky because we want to loop on a file handle
-   my $content = get($testsurl);
-   die "error getting $testsurl" unless defined $content;
+   my $content = `curl -s -L '$testsurl'`;
+   die "error getting $testsurl" if ($content eq "");
    $handle = IO::String->new($content);
 }
 
