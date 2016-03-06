@@ -1,5 +1,6 @@
 # neutrality-test
 test your ISP neutrality
+
 version 1.1.5
 
         neutrality-test [options] [url]
@@ -7,7 +8,7 @@ version 1.1.5
         Arguments:
 
           if no url argument, stdin is used instead.
-          The url (or stdin) must contain a list of test, one per line.
+          The url (or stdin) must contain a list of tests, one per line.
           See below for the syntax.
 
         Options:
@@ -36,3 +37,5 @@ version 1.1.5
           K, M, G,T denote: Kilo, Mega, Giga and Tera (each are x1000 increment not 1024)
 
   see tests.txt, multi-isp.txt and def.txt for sample tests.
+
+  thx to Vivien & hwti and everyone at https://lafibre.info for their contributions
